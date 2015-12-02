@@ -11,7 +11,7 @@ EXECUTABLE = analyze
 all: $(SOURCES) $(EXECUTABLE)
 
 $(EXECUTABLE): $(OBJECTS) 
-	@$(CXX) $(LDFLAGS) $(OBJECTS) -o $@
+	@$(CXX) $(OBJECTS) $(LDFLAGS) -o $@
 
 %.o: $(SRC)/%.cpp $(INCLUDIR)
 	@$(CXX) $(CXXFLAGS) $< -o $@
