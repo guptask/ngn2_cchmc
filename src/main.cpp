@@ -13,7 +13,7 @@
 #include "opencv2/photo/photo.hpp"
 
 
-#define DEBUG_FLAG              1       // Debug flag for image channels
+#define DEBUG_FLAG              0       // Debug flag for image channels
 #define MIN_SOMA_SIZE           20      // Min soma size
 #define CELL_COVERAGE_RATIO     0.5     // Coverage ratio
 #define MIN_ARC_LENGTH_FILTER   10      // Min arc length filter threshold
@@ -53,7 +53,7 @@ bool enhanceImage(cv::Mat src, ChannelType channel_type, cv::Mat *dst) {
             cv::threshold(enhanced, enhanced, 100, 255, cv::THRESH_BINARY);
         } break;
 
-        case ChannelType::PURPLE {
+        case ChannelType::PURPLE: {
             cv::Mat denoised, gray;
             cv::threshold(src, denoised, 20, 255, cv::THRESH_TOZERO);
             cv::threshold(denoised, denoised, 120, 255, cv::THRESH_TOZERO_INV);
@@ -62,7 +62,7 @@ bool enhanceImage(cv::Mat src, ChannelType channel_type, cv::Mat *dst) {
             cv::threshold(enhanced, enhanced, 20, 255, cv::THRESH_BINARY);
         } break;
 
-        case ChannelType::RED {
+        case ChannelType::RED: {
             cv::Mat denoised, gray;
             cv::threshold(src, denoised, 150, 255, cv::THRESH_TOZERO);
             cv::GaussianBlur(denoised, gray, cv::Size(3,3), 11);
@@ -143,21 +143,24 @@ void filterCells(   ChannelType channel_type,
         if (contour_mask[i] != HierarchyType::PARENT_CNTR) continue;
         // Eliminate extremely small contours
         auto arc_length = arcLength(contours[i], true);
-        if ((contours[i].size() >= 5) && (arc_length >= MIN_ARC_LENGTH_FILTER)) {
+        if ((contours[i].size() < 5) || (arc_length < MIN_ARC_LENGTH_FILTER)) continue;
 
         switch(channel_type) {
-            case ChannelType::BLUE {
-
+            case ChannelType::BLUE: {
                 // Calculate center of the nucleus
                 cv::RotatedRect min_area_rect = minAreaRect(cv::Mat(contours[i]));
                 float aspect_ratio = float(min_area_rect.size.width)/min_area_rect.size.height;
                 if (aspect_ratio > 1.0) {
                     aspect_ratio = 1.0/aspect_ratio;
                 }
-                if (aspect_ratio >= CELL_COVERAGE_RATIO) filtered_contours->push_back(contours[i]);
+                if (aspect_ratio >= CELL_COVERAGE_RATIO) {
+                    filtered_contours->push_back(contours[i]);
+                }
             } break;
 
-            case ChannelType::RED {
+            case ChannelType::PURPLE: 
+            case ChannelType::RED: {
+                filtered_contours->push_back(contours[i]);
             } break;
         }
     }
