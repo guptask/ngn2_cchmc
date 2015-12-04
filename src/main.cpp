@@ -13,7 +13,7 @@
 #include "opencv2/photo/photo.hpp"
 
 
-#define DEBUG_FLAG              0       // Debug flag for image channels
+#define DEBUG_FLAG              1       // Debug flag for image channels
 #define MIN_SOMA_SIZE           20      // Min soma size
 #define CELL_COVERAGE_RATIO     0.5     // Coverage ratio
 #define MIN_ARC_LENGTH_FILTER   10      // Min arc length filter threshold
@@ -46,28 +46,18 @@ bool enhanceImage(cv::Mat src, ChannelType channel_type, cv::Mat *dst) {
     cv::Mat enhanced;
     switch(channel_type) {
         case ChannelType::BLUE: {
-            cv::Mat denoised, gray;
-            cv::threshold(src, denoised, 100, 255, cv::THRESH_TOZERO);
-            cv::GaussianBlur(src, gray, cv::Size(3,3), 11);
-            cv::addWeighted(src, 1.5, gray, -0.5, 0, enhanced);
-            cv::threshold(enhanced, enhanced, 100, 255, cv::THRESH_BINARY);
+            cv::threshold(src, enhanced, 150, 255, cv::THRESH_BINARY);
         } break;
 
         case ChannelType::PURPLE: {
-            cv::Mat denoised, gray;
-            cv::threshold(src, denoised, 20, 255, cv::THRESH_TOZERO);
-            cv::threshold(denoised, denoised, 120, 255, cv::THRESH_TOZERO_INV);
-            cv::GaussianBlur(denoised, gray, cv::Size(3,3), 11);
-            cv::addWeighted(denoised, 1.5, gray, -0.5, 0, enhanced);
-            cv::threshold(enhanced, enhanced, 20, 255, cv::THRESH_BINARY);
+            cv::Mat temp, gray;
+            cv::threshold(src, temp, 50, 255, cv::THRESH_TOZERO);
+            cv::threshold(temp, temp, 150, 255, cv::THRESH_TOZERO_INV);
+            cv::threshold(temp, enhanced, 50, 255, cv::THRESH_BINARY);
         } break;
 
         case ChannelType::RED: {
-            cv::Mat denoised, gray;
-            cv::threshold(src, denoised, 150, 255, cv::THRESH_TOZERO);
-            cv::GaussianBlur(denoised, gray, cv::Size(3,3), 11);
-            cv::addWeighted(denoised, 1.5, gray, -0.5, 0, enhanced);
-            cv::threshold(enhanced, enhanced, 20, 255, cv::THRESH_BINARY);
+            cv::threshold(src, enhanced, 170, 255, cv::THRESH_BINARY);
         } break;
 
         default: {
@@ -376,7 +366,7 @@ bool processDir(std::string path, std::string image_name, std::string metrics_fi
         // Original image
         std::string out_original = out_directory + "zlayer_" + 
                                         std::to_string(z_index) + "_a_original.jpg";
-        cv::imwrite(out_original.c_str(), img);
+        if (!DEBUG_FLAG) cv::imwrite(out_original.c_str(), img);
 
         std::vector<cv::Mat> channel(3);
         cv::split(img, channel);
@@ -387,6 +377,10 @@ bool processDir(std::string path, std::string image_name, std::string metrics_fi
         // Continue collecting layers if needed
         //if (z_index%NUM_Z_LAYERS_COMBINED && (z_index != z_count)) continue;
         if (z_index < NUM_Z_LAYERS_COMBINED) continue;
+
+        data_stream << image_name << ","
+                    << std::to_string(z_index - NUM_Z_LAYERS_COMBINED + 1) << ","
+                    << std::to_string(z_index) << ",";
 
         // Merge some layers together
         cv::Mat blue  = cv::Mat::zeros(channel[0].size(), CV_8UC1);
@@ -545,6 +539,16 @@ int main(int argc, char *argv[]) {
         std::cerr << "Could not create the metrics file." << std::endl;
         return -1;
     }
+    data_stream << "CZI Image,";
+    data_stream << "Z-index start,";
+    data_stream << "Z-index end,";
+    data_stream << "Neural Cell Count,";
+    data_stream << "Neural Soma Diameter (mean),";
+    data_stream << "Neural Soma Diameter (std. dev.),";
+    data_stream << "Neural Soma Aspect Ratio (mean),";
+    data_stream << "Neural Soma Aspect Ratio (std. dev.),";
+    data_stream << "Neural Soma Error Ratio (mean),";
+    data_stream << "Neural Soma Error Ratio (std. dev.),";
     data_stream << std::endl;
     data_stream.close();
 
