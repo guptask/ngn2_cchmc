@@ -13,7 +13,7 @@
 #include "opencv2/photo/photo.hpp"
 
 
-#define DEBUG_FLAG              1       // Debug flag for image channels
+#define DEBUG_FLAG              0       // Debug flag for image channels
 #define MIN_SOMA_SIZE           20      // Min soma size
 #define CELL_COVERAGE_RATIO     0.5     // Coverage ratio
 #define MIN_ARC_LENGTH_FILTER   10      // Min arc length filter threshold
@@ -366,7 +366,7 @@ bool processDir(std::string path, std::string image_name, std::string metrics_fi
         // Original image
         std::string out_original = out_directory + "zlayer_" + 
                                         std::to_string(z_index) + "_a_original.jpg";
-        if (!DEBUG_FLAG) cv::imwrite(out_original.c_str(), img);
+        if (DEBUG_FLAG) cv::imwrite(out_original.c_str(), img);
 
         std::vector<cv::Mat> channel(3);
         cv::split(img, channel);
@@ -449,23 +449,17 @@ bool processDir(std::string path, std::string image_name, std::string metrics_fi
                         &hierarchy_red, 
                         &red_contour_mask,
                         &red_contour_area  );
-        std::vector<std::vector<cv::Point>> contours_red_filtered;
-        filterCells(    ChannelType::RED, 
-                        red_enhanced, 
-                        contours_red, 
-                        red_contour_mask, 
-                        &contours_red_filtered  );
 
 
         /** Classify the cell soma **/
 
-        std::vector<std::vector<cv::Point>> contours_purple;
+        std::vector<std::vector<cv::Point>> contours_cell_soma;
         cv::Mat purple_intersection = cv::Mat::zeros(purple_enhanced.size(), CV_8UC1);
         for (size_t i = 0; i < contours_blue_filtered.size(); i++) {
             std::vector<cv::Point> purple_contour;
             cv::Mat temp;
             if (findCellSoma( contours_blue_filtered[i], purple_enhanced, &temp, &purple_contour )) {
-                contours_purple.push_back(purple_contour);
+                contours_cell_soma.push_back(purple_contour);
                 bitwise_or(purple_intersection, temp, purple_intersection);
                 cv::Mat temp_not;
                 bitwise_not(temp, temp_not);
@@ -476,10 +470,11 @@ bool processDir(std::string path, std::string image_name, std::string metrics_fi
 
         /** Collect the metrics **/
 
+        // Characterize the soma size
         float mean_dia = 0.0, stddev_dia = 0.0;
         float mean_aspect_ratio = 0.0, stddev_aspect_ratio = 0.0;
         float mean_error_ratio = 0.0, stddev_error_ratio = 0.0;
-        separationMetrics(  contours_purple, 
+        separationMetrics(  contours_cell_soma, 
                             &mean_dia, 
                             &stddev_dia, 
                             &mean_aspect_ratio, 
@@ -487,7 +482,7 @@ bool processDir(std::string path, std::string image_name, std::string metrics_fi
                             &mean_error_ratio, 
                             &stddev_error_ratio
                         );
-        data_stream << contours_purple.size() << "," 
+        data_stream << contours_cell_soma.size() << "," 
                     << mean_dia << "," 
                     << stddev_dia << "," 
                     << mean_aspect_ratio << "," 
@@ -495,7 +490,82 @@ bool processDir(std::string path, std::string image_name, std::string metrics_fi
                     << mean_error_ratio << "," 
                     << stddev_error_ratio << ",";
 
+        // Characterize the red channel
+        std::string red_output;
+        binArea(red_contour_mask, red_contour_area, &red_output);
+        data_stream << red_output << ",";
+
         data_stream << std::endl;
+
+#if 0
+        /** Display the debug image **/
+
+        if (DEBUG_FLAG) {
+            // Initialize
+            cv::Mat drawing_blue_debug = cv::Mat::zeros(dapi_enhanced.size(), CV_8UC1);
+            cv::Mat drawing_green_debug = cv::Mat::zeros(gfp_enhanced.size(), CV_8UC1);
+            cv::Mat drawing_green_debug = gfp_intersection;
+            cv::Mat drawing_red_debug   = cv::Mat::zeros(rfp_enhanced_type1.size(), CV_8UC1);
+            //cv::Mat drawing_red_debug = rfp_intersection;
+
+            // Draw DAPI bondaries
+            for (size_t i = 0; i < contours_dapi_filtered.size(); i++) {
+                cv::Moments mu = moments(contours_dapi_filtered[i], true);
+                cv::Point2f mc = cv::Point2f(   static_cast<float>(mu.m10/mu.m00), 
+                                                static_cast<float>(mu.m01/mu.m00)   );
+                cv::circle(drawing_blue_debug, mc, DAPI_MASK_RADIUS, 255, 1, 8);
+                cv::circle(drawing_green_debug, mc, DAPI_MASK_RADIUS, 255, 1, 8);
+                cv::circle(drawing_red_debug, mc, DAPI_MASK_RADIUS, 255, 1, 8);
+            }
+
+            // Merge the modified red, blue and green layers
+            std::vector<cv::Mat> merge_debug;
+            merge_debug.push_back(drawing_blue_debug);
+            merge_debug.push_back(drawing_green_debug);
+            merge_debug.push_back(drawing_red_debug);
+            cv::Mat color_debug;
+            cv::merge(merge_debug, color_debug);
+
+            // Draw the debug image
+            std::string out_debug = out_directory + analyzed_image_name;
+            out_debug.insert(out_debug.find_last_of("."), "_debug", 6);
+            cv::imwrite(out_debug.c_str(), color_debug);
+        }
+#endif
+
+        /** Display the analyzed <dapi,gfp,rfp> image set **/
+
+        // Initialize
+        cv::Mat drawing_blue  = blue;
+        cv::Mat drawing_green = green;
+        cv::Mat drawing_red   = red;
+
+        // Draw soma
+        for (size_t i = 0; i < contours_cell_soma.size(); i++) {
+            drawContours(drawing_blue, contours_cell_soma, i, 255, 1, 8);
+            drawContours(drawing_green, contours_cell_soma, i, 255, 1, 8);
+            drawContours(drawing_red, contours_cell_soma, i, 255, 1, 8);
+        }
+
+        // Draw synapses
+        for (size_t i = 0; i < contours_red.size(); i++) {
+            drawContours(drawing_blue, contours_red, i, 255, 1, 8);
+            drawContours(drawing_green, contours_red, i, 0, 1, 8);
+            drawContours(drawing_red, contours_red, i, 255, 1, 8);
+        }
+
+        // Merge the modified red, blue and green layers
+        std::vector<cv::Mat> merge_analyzed;
+        merge_analyzed.push_back(drawing_blue);
+        merge_analyzed.push_back(drawing_green);
+        merge_analyzed.push_back(drawing_red);
+        cv::Mat color_analyzed;
+        cv::merge(merge_analyzed, color_analyzed);
+
+        // Draw the analyzed image
+        std::string out_analyzed = out_directory + "zlayer_" + 
+                                        std::to_string(z_index) + "_analyzed.jpg";
+        cv::imwrite(out_analyzed.c_str(), color_analyzed);
     }
     closedir(read_dir);
     data_stream.close();
@@ -542,13 +612,21 @@ int main(int argc, char *argv[]) {
     data_stream << "CZI Image,";
     data_stream << "Z-index start,";
     data_stream << "Z-index end,";
-    data_stream << "Neural Cell Count,";
-    data_stream << "Neural Soma Diameter (mean),";
-    data_stream << "Neural Soma Diameter (std. dev.),";
-    data_stream << "Neural Soma Aspect Ratio (mean),";
-    data_stream << "Neural Soma Aspect Ratio (std. dev.),";
-    data_stream << "Neural Soma Error Ratio (mean),";
-    data_stream << "Neural Soma Error Ratio (std. dev.),";
+    data_stream << "Cell Count,";
+    data_stream << "Soma Diameter (mean),";
+    data_stream << "Soma Diameter (std. dev.),";
+    data_stream << "Soma Aspect Ratio (mean),";
+    data_stream << "Soma Aspect Ratio (std. dev.),";
+    data_stream << "Soma Error Ratio (mean),";
+    data_stream << "Soma Error Ratio (std. dev.),";
+
+    // Synapse bins
+    data_stream << "Synapse Contour Count,";
+    for (unsigned int i = 0; i < NUM_AREA_BINS-1; i++) {
+        data_stream << i*BIN_AREA << " <= Synapse Contour Area < " << (i+1)*BIN_AREA << ",";
+    }
+    data_stream << "Synapse Contour Area >= " << (NUM_AREA_BINS-1)*BIN_AREA << ",";
+
     data_stream << std::endl;
     data_stream.close();
 
