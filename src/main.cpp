@@ -14,11 +14,11 @@
 
 
 #define DEBUG_FLAG              0       // Debug flag for image channels
-#define CELL_COVERAGE_RATIO     0.1     // Coverage ratio
-#define MIN_ARC_LENGTH_FILTER   5       // Min arc length filter threshold
-#define MIN_SOMA_SIZE           20      // Min soma size
-#define SOMA_COVERAGE_RATIO     0.3     // Coverage ratio
-#define SOMA_FACTOR             1.3     // Soma radius = factor * nuclues radius
+#define CELL_ASPECT_RATIO       0.2     // Cell aspect ratio
+#define MIN_ARC_LENGTH          50      // Min arc length threshold
+#define MIN_SOMA_SIZE           80      // Min soma size
+#define SOMA_COVERAGE_RATIO     0.2     // Soma Coverage ratio
+#define SOMA_FACTOR             1.1     // Soma radius = factor * nuclues radius
 #define PI                      3.14    // Approximate value of pi
 #define NUM_AREA_BINS           21      // Number of bins
 #define BIN_AREA                25      // Bin area
@@ -46,11 +46,11 @@ bool enhanceImage(cv::Mat src, ChannelType channel_type, cv::Mat *dst) {
     cv::Mat enhanced;
     switch(channel_type) {
         case ChannelType::BLUE: {
-            cv::threshold(src, enhanced, 40, 255, cv::THRESH_BINARY);
+            cv::threshold(src, enhanced, 80, 255, cv::THRESH_BINARY);
         } break;
 
         case ChannelType::PURPLE: {
-            cv::threshold(src, enhanced, 40, 255, cv::THRESH_BINARY);
+            cv::threshold(src, enhanced, 50, 255, cv::THRESH_BINARY);
         } break;
 
         case ChannelType::RED: {
@@ -125,7 +125,7 @@ void filterCells(   ChannelType channel_type,
         if (contour_mask[i] != HierarchyType::PARENT_CNTR) continue;
         // Eliminate extremely small contours
         auto arc_length = arcLength(contours[i], true);
-        if ((contours[i].size() < 5) || (arc_length < MIN_ARC_LENGTH_FILTER)) continue;
+        if ((contours[i].size() < 5) || (arc_length < MIN_ARC_LENGTH)) continue;
 
         switch(channel_type) {
             case ChannelType::BLUE: {
@@ -135,7 +135,7 @@ void filterCells(   ChannelType channel_type,
                 if (aspect_ratio > 1.0) {
                     aspect_ratio = 1.0/aspect_ratio;
                 }
-                if (aspect_ratio >= CELL_COVERAGE_RATIO) {
+                if (aspect_ratio >= CELL_ASPECT_RATIO) {
                     filtered_contours->push_back(contours[i]);
                 }
             } break;
@@ -410,9 +410,9 @@ bool processDir(std::string path, std::string image_name, std::string metrics_fi
         // Blue channel
         cv::Mat blue_enhanced;
         if(!enhanceImage(blue, ChannelType::BLUE, &blue_enhanced)) return false;
-        cv::Mat purple_enhanced_negative = cv::Mat::zeros(purple_enhanced.size(), CV_8UC1);
-        bitwise_not(purple_enhanced, purple_enhanced_negative);
-        bitwise_and(blue_enhanced, purple_enhanced_negative, blue_enhanced);
+        //cv::Mat purple_enhanced_negative = cv::Mat::zeros(purple_enhanced.size(), CV_8UC1);
+        //bitwise_not(purple_enhanced, purple_enhanced_negative);
+        //bitwise_and(blue_enhanced, purple_enhanced_negative, blue_enhanced);
         std::string out_blue = out_directory + "zlayer_" + 
                                         std::to_string(z_index) + "_blue_enhanced.jpg";
         if (DEBUG_FLAG) cv::imwrite(out_blue.c_str(), blue_enhanced);
@@ -427,7 +427,7 @@ bool processDir(std::string path, std::string image_name, std::string metrics_fi
         std::vector<HierarchyType> blue_contour_mask;
         std::vector<double> blue_contour_area;
         contourCalc(    blue_enhanced,
-                        1.0,
+                        50.0,
                         &blue_segmented, 
                         &contours_blue,
                         &hierarchy_blue, 
@@ -560,9 +560,9 @@ bool processDir(std::string path, std::string image_name, std::string metrics_fi
 
         // Draw synapses
         for (size_t i = 0; i < contours_red.size(); i++) {
-            drawContours(drawing_blue, contours_red, i, 255, 1, 8);
-            drawContours(drawing_green, contours_red, i, 0, 1, 8);
-            drawContours(drawing_red, contours_red, i, 255, 1, 8);
+            drawContours(drawing_blue, contours_red, i, 0, 0, 8);
+            drawContours(drawing_green, contours_red, i, 0, 0, 8);
+            drawContours(drawing_red, contours_red, i, 255, -1, 8);
         }
 
         // Merge the modified red, blue and green layers
