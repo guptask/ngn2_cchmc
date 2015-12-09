@@ -16,8 +16,9 @@
 #define DEBUG_FLAG              0       // Debug flag for image channels
 #define CELL_ASPECT_RATIO       0.2     // Cell aspect ratio
 #define MIN_ARC_LENGTH          50      // Min arc length threshold
-#define MIN_SOMA_SIZE           80      // Min soma size
-#define SOMA_COVERAGE_RATIO     0.2     // Soma Coverage ratio
+#define MIN_NUCLEUS_SIZE        80      // Min nucleus size
+#define MIN_SOMA_SIZE           100     // Min soma size
+#define SOMA_COVERAGE_RATIO     0.3     // Soma Coverage ratio
 #define SOMA_FACTOR             1.1     // Soma radius = factor * nuclues radius
 #define PI                      3.14    // Approximate value of pi
 #define NUM_AREA_BINS           21      // Number of bins
@@ -46,7 +47,7 @@ bool enhanceImage(cv::Mat src, ChannelType channel_type, cv::Mat *dst) {
     cv::Mat enhanced;
     switch(channel_type) {
         case ChannelType::BLUE: {
-            cv::threshold(src, enhanced, 80, 255, cv::THRESH_BINARY);
+            cv::threshold(src, enhanced, 85, 255, cv::THRESH_BINARY);
         } break;
 
         case ChannelType::PURPLE: {
@@ -157,29 +158,27 @@ bool findCellSoma( std::vector<cv::Point> nucleus_contour,
 
     bool status = false;
 
-    // Calculate radius and center of the nucleus
-    cv::Moments mu = moments(nucleus_contour, true);
-    cv::Point2f mc = cv::Point2f(   static_cast<float>(mu.m10/mu.m00), 
-                                    static_cast<float>(mu.m01/mu.m00)   );
+    // Calculate the min bounding rectangle
     cv::RotatedRect min_area_rect = minAreaRect(cv::Mat(nucleus_contour));
-    float nucleus_radius = sqrt(min_area_rect.size.width * min_area_rect.size.height);
+    cv::RotatedRect scaled_rect   = minAreaRect(cv::Mat(nucleus_contour));
 
     // Nucleus' region of influence
     cv::Mat roi_mask = cv::Mat::zeros(cell_mask.size(), CV_8UC1);
-    float roi_radius = (float) (SOMA_FACTOR * nucleus_radius);
-    cv::circle(roi_mask, mc, roi_radius, 255, -1, 8);
-    cv::circle(roi_mask, mc, nucleus_radius, 0, -1, 8);
-    int circle_score = countNonZero(roi_mask);
+    scaled_rect.size.width  = (float)(SOMA_FACTOR * scaled_rect.size.width);
+    scaled_rect.size.height = (float)(SOMA_FACTOR * scaled_rect.size.height);
+    ellipse(roi_mask, scaled_rect, 255, -1, 8);
+    ellipse(roi_mask, min_area_rect, 0, -1, 8);
+    int mask_score = countNonZero(roi_mask);
 
     // Soma present in ROI
     bitwise_and(roi_mask, cell_mask, *intersection);
     int intersection_score = countNonZero(*intersection);
 
-    // Add the nuecleus contour to intersection region
-    cv::circle(*intersection, mc, nucleus_radius, 255, -1, 8);
+    // Add the nucleus contour to intersection region
+    ellipse(*intersection, min_area_rect, 255, -1, 8);
 
     // Add to the soma mask if coverage area exceeds a certain threshold
-    float ratio = ((float) intersection_score) / circle_score;
+    float ratio = ((float) intersection_score) / mask_score;
     if (ratio >= SOMA_COVERAGE_RATIO) {
 
         // Segment
@@ -400,9 +399,9 @@ bool processDir(std::string path, std::string image_name, std::string metrics_fi
         // Purple channel
         cv::Mat purple_enhanced;
         if(!enhanceImage(red, ChannelType::PURPLE, &purple_enhanced)) return false;
-        cv::Mat red_enhanced_negative = cv::Mat::zeros(red_enhanced.size(), CV_8UC1);
-        bitwise_not(red_enhanced, red_enhanced_negative);
-        bitwise_and(purple_enhanced, red_enhanced_negative, purple_enhanced);
+        //cv::Mat red_enhanced_negative = cv::Mat::zeros(red_enhanced.size(), CV_8UC1);
+        //bitwise_not(red_enhanced, red_enhanced_negative);
+        //bitwise_and(purple_enhanced, red_enhanced_negative, purple_enhanced);
         std::string out_purple = out_directory + "zlayer_" + 
                                         std::to_string(z_index) + "_purple_enhanced.jpg";
         if (DEBUG_FLAG) cv::imwrite(out_purple.c_str(), purple_enhanced);
@@ -427,7 +426,7 @@ bool processDir(std::string path, std::string image_name, std::string metrics_fi
         std::vector<HierarchyType> blue_contour_mask;
         std::vector<double> blue_contour_area;
         contourCalc(    blue_enhanced,
-                        50.0,
+                        MIN_NUCLEUS_SIZE,
                         &blue_segmented, 
                         &contours_blue,
                         &hierarchy_blue, 
