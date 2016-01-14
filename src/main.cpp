@@ -573,9 +573,15 @@ bool processDir(std::string path, std::string image_name, std::string metrics_fi
         cv::merge(merge_analyzed, color_analyzed);
 
         // Draw the analyzed image
+        std::vector<int> compression_params;
+        compression_params.push_back(CV_IMWRITE_JPEG_QUALITY);
+        compression_params.push_back(101);
+        cv::imwrite("/tmp/img.jpg", color_analyzed, compression_params);
         std::string out_analyzed = out_directory + "zlayer_" + 
-                                        std::to_string(z_index) + "_analyzed.jpg";
-        cv::imwrite(out_analyzed.c_str(), color_analyzed);
+                                        std::to_string(z_index) + "_analyzed.tif";
+        std::string cmd = "convert -quiet /tmp/img.jpg " + out_analyzed;
+        system(cmd.c_str());
+        system("rm /tmp/img.jpg");
     }
     closedir(read_dir);
     data_stream.close();
